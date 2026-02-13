@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Weather Final Boss</title>
+
+<style>
+*{margin:0;padding:0;box-sizing:border-box;font-family:'Segoe UI',sans-serif}
+body{
+min-height:100vh;
+display:flex;
+justify-content:center;
+align-items:center;
+background:linear-gradient(135deg,#4facfe,#00f2fe);
+transition:1s;
+color:#fff;
+overflow:auto;
+}
+.weather-card{
+width:450px;
+background:rgba(255,255,255,0.15);
+backdrop-filter:blur(20px);
+border-radius:25px;
+padding:20px;
+text-align:center;
+box-shadow:0 20px 50px rgba(0,0,0,0.3);
+position:relative;
+}
+h1{margin-bottom:10px}
+.search-box{display:flex;gap:6px;margin-bottom:10px}
+.search-box input{flex:1;padding:10px;border-radius:10px;border:none;outline:none}
+.search-box button{
+padding:10px;border:none;border-radius:10px;
+background:#fff;color:#4facfe;font-weight:bold;
+cursor:pointer
+}
+.toggle, .saved-cities{
+margin-top:8px;font-size:13px;cursor:pointer;opacity:0.9
+}
+.weather-info img{width:75px}
+.temp{font-size:38px;font-weight:bold}
+.details{display:flex;justify-content:space-between;font-size:13px;margin-top:6px}
+.forecast{display:flex;overflow-x:auto;gap:8px;margin-top:10px}
+.day{min-width:65px;background:rgba(255,255,255,0.2);padding:6px;border-radius:10px;font-size:11px}
+canvas{margin-top:10px;background:rgba(255,255,255,0.1);border-radius:12px}
+.rain{
+position:fixed;width:2px;height:15px;
+background:white;opacity:0.5;
+animation:rainFall linear infinite;
+}
+@keyframes rainFall{
+0%{transform:translateY(-100px)}
+100%{transform:translateY(100vh)}
+}
+@media(max-width:480px){.weather-card{width:95%}}
+</style>
+</head>
+
+<body>
+
+<div class="weather-card">
+<h1>🌦 Weather Final Boss</h1>
+
+<div class="search-box">
+<input type="text" id="cityInput" placeholder="Enter city">
+<button onclick="getWeather()">Search</button>
+<button onclick="saveCity()">💾</button>
+</div>
+
+<div class="toggle" onclick="toggleUnit()">Switch °C / °F</div>
+<div class="saved-cities" id="savedCities"></div>
+
+<div id="weatherInfo"></div>
+<div id="forecast" class="forecast"></div>
+
+<canvas id="hourlyChart" width="400" height="150"></canvas>
+
+</div>
+
+<script>
+const apiKey="750e2688f49f4d39a44164111261202";
+let isCelsius=true;
+let currentCity="London";
+
+function toggleUnit(){isCelsius=!isCelsius;getWeather(currentCity)}
+
+function setBackground(condition,isDay){
+if(condition.includes("Rain")){addRain()}
+else{removeRain()}
+if(condition.includes("Clear")||condition.includes("Sunny")){
+document.body.style.background=isDay?
+"linear-gradient(135deg,#f6d365,#fda085)":
+"linear-gradient(135deg,#141e30,#243b55)";
+}else{
+document.body.style.background="linear-gradient(135deg,#4facfe,#00f2fe)";
+}
+}
+
+function addRain(){
+removeRain();
+for(let i=0;i<80;i++){
+const drop=document.createElement("div");
+drop.classList.add("rain");
+drop.style.left=Math.random()*100+"vw";
+drop.style.animationDuration=(0.5+Math.random())+"s";
+document.body.appendChild(drop);
+}
+}
+function removeRain(){
+document.querySelectorAll(".rain").forEach(e=>e.remove());
+}
+
+async function getWeather(cityParam){
+const city=cityParam||document.getElementById("cityInput").value;
+if(!city)return;
+currentCity=city;
+
+document.getElementById("weatherInfo").innerHTML="Loading...";
+document.getElementById("forecast").innerHTML="";
+
+try{
+const res=await fetch(`https://api.weatherapi.com/v1/forecast.json?key=${apiKey}&q=${city}&days=7`);
+const data=await res.json();
+if(data.error){document.getElementById("weatherInfo").innerHTML="City not found";return;}
+
+const current=data.current;
+const forecast=data.forecast.forecastday;
+
+setBackground(current.condition.text,current.is_day);
+
+const temp=isCelsius?current.temp_c:current.temp_f;
+const unit=isCelsius?"°C":"°F";
+
+document.getElementById("weatherInfo").innerHTML=`
+<img src="https:${current.condition.icon}">
+<div class="temp">${temp}${unit}</div>
+<div>${data.location.name}, ${data.location.country}</div>
+<div>${current.condition.text}</div>
+<div class="details">
+<div>💧 ${current.humidity}%</div>
+<div>🌬 ${current.wind_kph} kph</div>
+</div>
+`;
+
+forecast.forEach(day=>{
+const date=new Date(day.date);
+const dayName=date.toLocaleDateString("en-US",{weekday:"short"});
+const fTemp=isCelsius?day.day.avgtemp_c:day.day.avgtemp_f;
+document.getElementById("forecast").innerHTML+=`
+<div class="day">
+<div>${dayName}</div>
+<img src="https:${day.day.condition.icon}" width="30">
+<div>${fTemp}${unit}</div>
+</div>
+`;
+});
+
+drawChart(forecast[0].hour);
+
+}catch(err){
+document.getElementById("weatherInfo").innerHTML="Error loading data";
+}
+}
+
+function drawChart(hours){
+const canvas=document.getElementById("hourlyChart");
+const ctx=canvas.getContext("2d");
+ctx.clearRect(0,0,canvas.width,canvas.height);
+
+const temps=hours.map(h=>isCelsius?h.temp_c:h.temp_f);
+const max=Math.max(...temps);
+const min=Math.min(...temps);
+
+ctx.beginPath();
+temps.forEach((t,i)=>{
+const x=i*(canvas.width/24);
+const y=canvas.height-((t-min)/(max-min))*canvas.height;
+if(i===0)ctx.moveTo(x,y);
+else ctx.lineTo(x,y);
+});
+ctx.strokeStyle="white";
+ctx.lineWidth=2;
+ctx.stroke();
+}
+
+function detectLocation(){
+if(navigator.geolocation){
+navigator.geolocation.getCurrentPosition(pos=>{
+getWeather(`${pos.coords.latitude},${pos.coords.longitude}`);
+});
+}else{getWeather("London")}
+}
+
+function saveCity(){
+let cities=JSON.parse(localStorage.getItem("cities"))||[];
+if(!cities.includes(currentCity)){
+cities.push(currentCity);
+localStorage.setItem("cities",JSON.stringify(cities));
+displaySaved();
+}
+}
+
+function displaySaved(){
+let cities=JSON.parse(localStorage.getItem("cities"))||[];
+document.getElementById("savedCities").innerHTML=
+cities.map(c=>`<span onclick="getWeather('${c}')">${c}</span>`).join(" | ");
+}
+
+window.onload=()=>{
+displaySaved();
+detectLocation();
+}
+</script>
+
+</body>
+</html>
